@@ -20,11 +20,18 @@ def get_images(msg):
     # loop through images to be attached
     for filename in os.listdir(image_dir):
 
+        # remove spaces from file names
+        if any(char.isspace() for char in filename):
+            spaceless_filename = filename.replace(" ", "_")
+            with Image.open(image_dir + "/" + filename) as img:
+                img.save(image_dir + "/" + spaceless_filename)
+            os.remove(image_dir + "/" + filename)
+            filename = spaceless_filename
+
         # convert jfif
         if filename.lower().endswith("jfif"):
             jpeg_filename = filename[:-4] + "jpeg"
             convert_jfif_to_jpg(image_dir + "/" + filename,image_dir + "/" + jpeg_filename)
-            filename=jpeg_filename
         # technically if you had a jfif with the same name as an existing jpeg it would replace it but that's niche
 
         # handle other image types
@@ -43,9 +50,9 @@ def get_images(msg):
                 msg.attach(img)
             
             # Create an HTML <img> tag for the image
-            image_tags.append(f'<img src="cid:{filename}" alt="{filename}" style="max-width: 600px; margin-top: 20px;" />')
+            image_tags.append(f'<img src="cid:{filename}" alt="{filename}" style="max-width: 600px; margin-top: 20px;" />\n<br>')
         
-        return image_tags
+    return image_tags
 
 
 
@@ -55,35 +62,34 @@ def email_content():
     msg = MIMEMultipart()
     msg['Subject'] = "html email"
     html_content = """
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            color: #333333;
-            margin: 20px;
-        }}
-        h1 {{
-            color: #4CAF50;
-        }}
-        p {{
-            font-size: 16px;
-        }}
-    </style>
-</head>
-<body>
-    <h1>Hello, World!</h1>
-    <p>This is a simple HTML email.</p>
-    <p>Feel free to customize this template as needed.</p>
-    {images}  <!-- Placeholder for image tags -->
-</body>
-</html>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                color: #333333;
+                margin: 20px;
+            }}
+            h1 {{
+                color: #4CAF50;
+            }}
+            p {{
+                font-size: 16px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>Man I Love Fishing!</h1>
+        <p>This is a simple FISHING email.</p>
+        <p>Not like phishing but like actually getting fish out of water.</p>
+        {images}
+    </body>
+    </html>
     """
 
     # attach images
     image_tags = get_images(msg)
-    print(image_tags)
     html_content = html_content.format(images='\n'.join(image_tags))
     msg.attach(MIMEText(html_content, 'html'))
 
@@ -104,11 +110,10 @@ def main():
         smtp.starttls() 
         smtp.login(secrets.MYADDRESS, secrets.APPPASSWORD)
 
-
         # send the email to everyone on the mailing list
+        msg_str = msg.as_string()
         for target_addr in secrets.TARGETADDRESSES:
-            smtp.sendmail(from_addr=secrets.MYADDRESS,
-                        to_addrs=target_addr, msg=msg.as_string())
+            smtp.sendmail(from_addr=secrets.MYADDRESS,to_addrs=target_addr, msg=msg_str)
         smtp.quit()
         connection_open = False
         print("All emails sent, connection closed, all done!")
