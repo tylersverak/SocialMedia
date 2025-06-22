@@ -1,18 +1,35 @@
+"""
+TYLER SVERAK
+A program to automate sending of an email newsletter.
 
+While the email contents should be generated elsewhere, the content is congregated and
+sent here. All images from the 'Images' subfolder will be send as attachments. There is no
+programmatic limit to the number of images sent but there are likely practical limitations.
+"""
 from email.mime.text import MIMEText 
-from email.mime.image import MIMEImage 
-from email.mime.application import MIMEApplication 
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart 
 import smtplib 
+import imaplib
 import os
-from secret import gmailpasswords as secrets
+from secret import secrets
 from PIL import Image
+from datetime import datetime
+from O365 import Account
 
-def convert_jfif_to_jpg(jfif_path, jpg_path):
-    with Image.open(jfif_path) as img:
+
+# Given the path to a JFIF image, replaces it with a JPEG version
+# @Upgrade: Consider expanding to work for all file types
+def convert_jfif_to_jpg(jfif_filename):
+    with Image.open(jfif_filename) as img:
         rgb_img = img.convert('RGB')  # Convert to RGB to ensure compatibility
+        jpg_path = jfif_filename[:-4] + "jpeg"
         rgb_img.save(jpg_path, 'JPEG')
 
+
+# Loops through the images in the 'Images' subfolder and converts them to JPG,
+# if necessary.
+# Returns a list of strings, containing <img> tags pointing to the given images
 def get_images(msg):
     image_dir = 'images'
     image_tags = []
@@ -21,7 +38,7 @@ def get_images(msg):
     for filename in os.listdir(image_dir):
 
         # remove spaces from file names
-        if any(char.isspace() for char in filename):
+        if " " in filename:
             spaceless_filename = filename.replace(" ", "_")
             with Image.open(image_dir + "/" + filename) as img:
                 img.save(image_dir + "/" + spaceless_filename)
@@ -30,9 +47,8 @@ def get_images(msg):
 
         # convert jfif
         if filename.lower().endswith("jfif"):
-            jpeg_filename = filename[:-4] + "jpeg"
-            convert_jfif_to_jpg(image_dir + "/" + filename,image_dir + "/" + jpeg_filename)
-        # technically if you had a jfif with the same name as an existing jpeg it would replace it but that's niche
+            convert_jfif_to_jpg(filename)
+        # technically if you had a jfif with the same name as an existing jpeg image it would replace it but that's niche
 
         # handle other image types
         if filename.lower().endswith(('png', 'jpg', 'jpeg')):
@@ -55,13 +71,9 @@ def get_images(msg):
     return image_tags
 
 
-
-def email_content():
-
-    # creating email text
-    msg = MIMEMultipart()
-    msg['Subject'] = "html email"
-    html_content = """
+# Returns a string composed of HTML, to be put in the body of the email as text.
+def make_html():
+    return """
     <!DOCTYPE html>
     <html>
     <head>
@@ -80,7 +92,7 @@ def email_content():
         </style>
     </head>
     <body>
-        <h1>Man I Love Fishing!</h1>
+        <h1>Man I Love Fishing!{date}</h1>
         <p>This is a simple FISHING email.</p>
         <p>Not like phishing but like actually getting fish out of water.</p>
         {images}
@@ -88,9 +100,18 @@ def email_content():
     </html>
     """
 
+
+# Uses make_html and get_images to gather the email contents and combine them.
+# Returns a MIMEMultipart object with the email contents.
+def email_content():
+    # creating email text
+    msg = MIMEMultipart()
+    msg['Subject'] = "html email"
+    html_content = make_html()
+
     # attach images
     image_tags = get_images(msg)
-    html_content = html_content.format(images='\n'.join(image_tags))
+    html_content = html_content.format(images='\n'.join(image_tags),date=datetime.now().strftime("%B %d, %Y"))
     msg.attach(MIMEText(html_content, 'html'))
 
     print("Email prepared...")
@@ -104,10 +125,9 @@ def main():
     # setup connection to smtp server
     connection_open = True
     try:
+        # verify credentials work
         print("Establishing connection...")
-        smtp = smtplib.SMTP('smtp.office365.com', 587)
-        smtp.ehlo() 
-        smtp.starttls() 
+        smtp = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         smtp.login(secrets.MYADDRESS, secrets.APPPASSWORD)
 
         # send the email to everyone on the mailing list
@@ -117,6 +137,8 @@ def main():
         smtp.quit()
         connection_open = False
         print("All emails sent, connection closed, all done!")
+    except Exception as e:
+        print("Log in or sending failed:",e)
     finally:
         if connection_open:
             smtp.quit()
